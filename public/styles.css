@@ -286,3 +286,167 @@ button#delete-annot-btn:hover {
 .path-tools label {
     margin-bottom: 4px;
 }
+
+/* Tabs */
+.tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 10px;
+    border-bottom: 2px solid #333;
+    padding-bottom: 4px;
+}
+
+.tab-btn {
+    padding: 6px 10px;
+    border: none;
+    background: transparent;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 12px;
+    border-radius: 4px 4px 0 0;
+    transition: all 0.2s;
+}
+
+.tab-btn:hover {
+    background: #222;
+    color: #eee;
+}
+
+.tab-btn.active {
+    background: #2979ff;
+    color: #fff;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* Character, Place, Event lists */
+#characters-list,
+#places-list,
+#events-list {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+    font-size: 13px;
+}
+
+#characters-list li,
+#places-list li,
+#events-list li {
+    padding: 6px 8px;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#characters-list li:hover,
+#places-list li:hover,
+#events-list li:hover {
+    background: #222;
+}
+
+/* Missions */
+#missions-list {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+    font-size: 13px;
+}
+
+#missions-list li {
+    padding: 8px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    cursor: pointer;
+}
+
+#missions-list li:hover {
+    background: #222;
+    border-color: #444;
+}
+
+.mission-status {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+.mission-status.todo {
+    background: #666;
+    color: #fff;
+}
+
+.mission-status.in_progress {
+    background: #ff9800;
+    color: #000;
+}
+
+.mission-status.completed {
+    background: #4caf50;
+    color: #fff;
+}
+
+.mission-status.cancelled {
+    background: #f44336;
+    color: #fff;
+}
+
+#mission-annotations-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0;
+}
+
+#mission-annotations-list li {
+    padding: 4px 6px;
+    background: #222;
+    border-radius: 3px;
+    margin-bottom: 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+/* Media gallery */
+#all-media-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.media-item {
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 8px;
+    background: #1a1a1a;
+}
+
+.media-item img {
+    width: 100%;
+    height: auto;
+    border-radius: 4px;
+    margin-bottom: 4px;
+}
+
+.media-item a {
+    color: #2979ff;
+    text-decoration: none;
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.media-item a:hover {
+    text-decoration: underline;
+}

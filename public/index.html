@@ -95,87 +95,217 @@
       </div>
 
       <aside class="sidebar">
-        <h2>Détails de l’annotation</h2>
-        <form id="annotation-form">
-          <input type="hidden" id="annot-id" />
+        <div class="tabs">
+          <button class="tab-btn active" data-tab="annotations">📝 Annotations</button>
+          <button class="tab-btn" data-tab="characters">👤 Personnages</button>
+          <button class="tab-btn" data-tab="places">📍 Lieux</button>
+          <button class="tab-btn" data-tab="events">🎉 Événements</button>
+          <button class="tab-btn" data-tab="media">🖼️ Médias</button>
+          <button class="tab-btn" data-tab="missions">🎯 Missions</button>
+        </div>
 
-          <label>
-            Titre :
-            <input id="annot-title" required />
-          </label>
+        <!-- Onglet Annotations -->
+        <div class="tab-content active" id="tab-annotations">
+          <h2>Détails de l'annotation</h2>
+          <form id="annotation-form">
+            <input type="hidden" id="annot-id" />
 
-          <label>
-            Type :
-            <select id="annot-type" required>
-              <option value="character">Personnage</option>
-              <option value="place">Lieu</option>
-              <option value="event">Évènement</option>
-              <option value="easter_egg">Easter Egg</option>
-              <option value="architecture">Architecture</option>
-            </select>
-          </label>
+            <label>
+              Titre :
+              <input id="annot-title" required />
+            </label>
 
-          <label>
-            Description / notes :
-            <textarea id="annot-description" rows="4"></textarea>
-          </label>
+            <label>
+              Type :
+              <select id="annot-type" required>
+                <option value="character">Personnage</option>
+                <option value="place">Lieu</option>
+                <option value="event">Évènement</option>
+                <option value="easter_egg">Easter Egg</option>
+                <option value="architecture">Architecture</option>
+              </select>
+            </label>
 
-          <label>
-            Tags (séparés par des virgules) :
-            <input id="annot-tags" placeholder="village, boss, quête principale" />
-          </label>
+            <label>
+              Description / notes :
+              <textarea id="annot-description" rows="4"></textarea>
+            </label>
 
-          <label>
-            Références (une URL par ligne) :
-            <textarea id="annot-refs" rows="4" placeholder="https://youtu.be/...\nhttps://artstation.com/..."></textarea>
-          </label>
+            <label>
+              Débloquée :
+              <input type="checkbox" id="annot-unlocked" checked />
+              <span style="font-size: 11px; color: #aaa;">Si décochée, l'annotation sera masquée jusqu'à ce qu'une mission la débloque</span>
+            </label>
 
-          <div class="buttons">
-            <button type="submit">💾 Enregistrer</button>
-            <button type="button" id="delete-annot-btn">🗑 Supprimer</button>
+            <label>
+              Tags (séparés par des virgules) :
+              <input id="annot-tags" placeholder="village, boss, quête principale" />
+            </label>
+
+            <label>
+              Références (une URL par ligne) :
+              <textarea id="annot-refs" rows="4" placeholder="https://youtu.be/...\nhttps://artstation.com/..."></textarea>
+            </label>
+
+            <div class="buttons">
+              <button type="submit">💾 Enregistrer</button>
+              <button type="button" id="delete-annot-btn">🗑 Supprimer</button>
+            </div>
+          </form>
+
+          <h3>Liste des annotations</h3>
+          <ul id="annotations-list"></ul>
+
+          <h3>Zones (shapes) du layer</h3>
+          <div class="shape-tools">
+            <label>
+              Nom de la zone :
+              <input id="shape-name" placeholder="Biome, région, donjon..." />
+            </label>
+            <label>
+              Style :
+              <select id="shape-style">
+                <option value="filled">Plein</option>
+                <option value="dashed">Pointillé</option>
+                <option value="hatched">Hachuré</option>
+              </select>
+            </label>
+            <button type="button" id="start-shape-btn">✏️ Dessiner une zone</button>
+            <button type="button" id="finish-shape-btn" disabled>✅ Terminer la zone</button>
+            <p class="hint">
+              Clique sur la carte pour poser les points du polygone.<br />
+              Il faut au moins 3 points, puis termine pour enregistrer.
+            </p>
           </div>
-        </form>
+          <ul id="shapes-list"></ul>
 
-        <h3>Liste des annotations</h3>
-        <ul id="annotations-list"></ul>
-
-        <h3>Zones (shapes) du layer</h3>
-        <div class="shape-tools">
-          <label>
-            Nom de la zone :
-            <input id="shape-name" placeholder="Biome, région, donjon..." />
-          </label>
-          <label>
-            Style :
-            <select id="shape-style">
-              <option value="filled">Plein</option>
-              <option value="dashed">Pointillé</option>
-              <option value="hatched">Hachuré</option>
-            </select>
-          </label>
-          <button type="button" id="start-shape-btn">✏️ Dessiner une zone</button>
-          <button type="button" id="finish-shape-btn" disabled>✅ Terminer la zone</button>
-          <p class="hint">
-            Clique sur la carte pour poser les points du polygone.<br />
-            Il faut au moins 3 points, puis termine pour enregistrer.
-          </p>
+          <h3>Chemins (paths) du layer</h3>
+          <div class="path-tools">
+            <label>
+              Nom du chemin :
+              <input id="path-name" placeholder="Route, sentier, rivière..." />
+            </label>
+            <button type="button" id="start-path-btn">🛤️ Dessiner un chemin</button>
+            <button type="button" id="finish-path-btn" disabled>✅ Terminer le chemin</button>
+            <p class="hint">
+              Clique sur la carte pour poser les points du chemin.<br />
+              Il faut au moins 2 points, puis termine pour enregistrer.
+            </p>
+          </div>
+          <ul id="paths-list"></ul>
         </div>
-        <ul id="shapes-list"></ul>
 
-        <h3>Chemins (paths) du layer</h3>
-        <div class="path-tools">
-          <label>
-            Nom du chemin :
-            <input id="path-name" placeholder="Route, sentier, rivière..." />
-          </label>
-          <button type="button" id="start-path-btn">🛤️ Dessiner un chemin</button>
-          <button type="button" id="finish-path-btn" disabled>✅ Terminer le chemin</button>
-          <p class="hint">
-            Clique sur la carte pour poser les points du chemin.<br />
-            Il faut au moins 2 points, puis termine pour enregistrer.
-          </p>
+        <!-- Onglet Personnages -->
+        <div class="tab-content" id="tab-characters">
+          <h2>Personnages</h2>
+          <ul id="characters-list"></ul>
+          <div id="character-detail" style="display: none;">
+            <h3 id="character-detail-title"></h3>
+            <p id="character-detail-description"></p>
+            <div id="character-media"></div>
+          </div>
         </div>
-        <ul id="paths-list"></ul>
+
+        <!-- Onglet Lieux -->
+        <div class="tab-content" id="tab-places">
+          <h2>Lieux</h2>
+          <ul id="places-list"></ul>
+          <div id="place-detail" style="display: none;">
+            <h3 id="place-detail-title"></h3>
+            <p id="place-detail-description"></p>
+            <div id="place-media"></div>
+          </div>
+        </div>
+
+        <!-- Onglet Événements -->
+        <div class="tab-content" id="tab-events">
+          <h2>Événements</h2>
+          <ul id="events-list"></ul>
+          <div id="event-detail" style="display: none;">
+            <h3 id="event-detail-title"></h3>
+            <p id="event-detail-description"></p>
+            <div id="event-media"></div>
+          </div>
+        </div>
+
+        <!-- Onglet Médias -->
+        <div class="tab-content" id="tab-media">
+          <h2>Tous les médias</h2>
+          <div id="all-media-list"></div>
+        </div>
+
+        <!-- Onglet Missions -->
+        <div class="tab-content" id="tab-missions">
+          <h2>Gestionnaire de missions</h2>
+          
+          <!-- Indicateur de progression -->
+          <div id="progression-panel" style="background: #2a2a2a; padding: 12px; border-radius: 4px; margin-bottom: 16px;">
+            <h3 style="margin-top: 0;">📊 Progression de l'exploration</h3>
+            <div id="progression-content">Chargement...</div>
+          </div>
+          
+          <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+            <button type="button" id="new-mission-btn">➕ Nouvelle mission</button>
+            <button type="button" id="show-graph-btn">📈 Voir le graphique</button>
+          </div>
+          
+          <!-- Graphique des missions -->
+          <div id="mission-graph-container" style="display: none; background: #1a1a1a; padding: 16px; border-radius: 4px; margin-bottom: 16px; min-height: 300px; overflow: auto;">
+            <h3 style="margin-top: 0;">Graphique des missions</h3>
+            <canvas id="mission-graph-canvas" style="width: 100%; height: 400px; border: 1px solid #444;"></canvas>
+          </div>
+          
+          <div id="mission-form" style="display: none;">
+            <input type="hidden" id="mission-id" />
+            <label>
+              Titre :
+              <input id="mission-title" required />
+            </label>
+            <label>
+              Description :
+              <textarea id="mission-description" rows="3"></textarea>
+            </label>
+            <label>
+              Statut :
+              <select id="mission-status">
+                <option value="todo">À faire</option>
+                <option value="in_progress">En cours</option>
+                <option value="completed">Terminée</option>
+                <option value="cancelled">Annulée</option>
+              </select>
+            </label>
+            <label>
+              Priorité :
+              <input type="number" id="mission-priority" min="0" max="10" value="0" />
+            </label>
+            <div class="buttons">
+              <button type="button" id="save-mission-btn">💾 Enregistrer</button>
+              <button type="button" id="cancel-mission-btn">❌ Annuler</button>
+            </div>
+          </div>
+          <ul id="missions-list"></ul>
+          <div id="mission-detail" style="display: none;">
+            <h3 id="mission-detail-title"></h3>
+            <p id="mission-detail-description"></p>
+            <p><strong>Statut :</strong> <span id="mission-detail-status"></span></p>
+            <p><strong>Priorité :</strong> <span id="mission-detail-priority"></span></p>
+            
+            <h4>Prérequis (missions requises)</h4>
+            <ul id="mission-required-list"></ul>
+            <button type="button" id="add-required-mission-btn">➕ Ajouter un prérequis</button>
+            
+            <h4>Débloque (missions suivantes)</h4>
+            <ul id="mission-dependent-list"></ul>
+            
+            <h4>Annotations liées</h4>
+            <ul id="mission-annotations-list"></ul>
+            <button type="button" id="add-annotation-to-mission-btn">➕ Lier une annotation</button>
+            
+            <h4>Chemins liés</h4>
+            <ul id="mission-paths-list"></ul>
+            <button type="button" id="add-path-to-mission-btn">➕ Lier un chemin</button>
+          </div>
+        </div>
       </aside>
     </section>
   </main>

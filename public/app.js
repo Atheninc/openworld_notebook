@@ -22,6 +22,7 @@ const annotIdInput = document.getElementById('annot-id');
 const annotTitle = document.getElementById('annot-title');
 const annotType = document.getElementById('annot-type');
 const annotDesc = document.getElementById('annot-description');
+const annotUnlocked = document.getElementById('annot-unlocked');
 const annotTags = document.getElementById('annot-tags');
 const annotRefs = document.getElementById('annot-refs');
 const deleteAnnotBtn = document.getElementById('delete-annot-btn');
@@ -431,6 +432,9 @@ function renderAnnotations() {
     if (!currentMap) return;
 
     currentAnnotations.forEach(a => {
+        // Filtrer les annotations non débloquées
+        if (a.unlocked === false) return;
+        
         const marker = document.createElement('div');
         marker.className = `marker ${a.type}`;
         marker.style.left = (a.x * 100) + '%';
@@ -464,11 +468,16 @@ function renderAnnotations() {
 function renderAnnotationsList() {
     annotationsList.innerHTML = '';
     currentAnnotations.forEach(a => {
+        // Filtrer les annotations non débloquées (optionnel - on peut les afficher mais grisées)
         const li = document.createElement('li');
-        li.textContent = `[${a.type}] ${a.title}`;
+        li.textContent = `[${a.type}] ${a.title}${a.unlocked === false ? ' 🔒' : ''}`;
         li.dataset.id = a.id;
         if (a.id === selectedAnnotationId) {
             li.style.background = '#333';
+        }
+        if (a.unlocked === false) {
+            li.style.opacity = '0.5';
+            li.style.color = '#888';
         }
         li.addEventListener('click', () => selectAnnotation(a.id));
         annotationsList.appendChild(li);
@@ -485,6 +494,7 @@ function selectAnnotation(id) {
     annotTitle.value = annot.title;
     annotType.value = annot.type;
     annotDesc.value = annot.description || '';
+    annotUnlocked.checked = annot.unlocked !== false;
 
     const meta = annot.meta || {};
     annotTags.value = meta.tags ? meta.tags.join(', ') : '';
@@ -523,6 +533,7 @@ mapWrapper.addEventListener('click', (e) => {
     annotIdInput.value = '';
     annotTitle.value = '';
     annotDesc.value = '';
+    annotUnlocked.checked = true;
     annotTags.value = '';
     annotRefs.value = '';
 
@@ -598,6 +609,8 @@ annotForm.addEventListener('submit', async(e) => {
     const meta = {};
     if (tags.length) meta.tags = tags;
     if (references.length) meta.references = references;
+    
+    const unlocked = annotUnlocked.checked;
 
     if (!id) {
         if (!lastClickPosition) {
@@ -612,7 +625,8 @@ annotForm.addEventListener('submit', async(e) => {
             description,
             x: lastClickPosition.x,
             y: lastClickPosition.y,
-            meta
+            meta,
+            unlocked
         };
         const created = await fetchJSON('/api/annotations', {
             method: 'POST',
@@ -628,7 +642,8 @@ annotForm.addEventListener('submit', async(e) => {
             meta,
             layer_id: layerSelect.value || (existing && existing.layer_id),
             x: existing ? existing.x : 0.5,
-            y: existing ? existing.y : 0.5
+            y: existing ? existing.y : 0.5,
+            unlocked
         };
         const updated = await fetchJSON(`/api/annotations/${id}`, {
             method: 'PUT',
@@ -887,18 +902,54 @@ mapCanvas.addEventListener('mousedown', (e) => {
 // --- ZOOM (molette) ---
 mapContainer.addEventListener('wheel', (e) => {
     if (!currentMap) return;
+    
+    // Vérifier si le scroll vient de la sidebar
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+        const sidebarRect = sidebar.getBoundingClientRect();
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+        
+        // Si la souris est dans la sidebar, ne pas zoomer la carte
+        if (mouseX >= sidebarRect.left && mouseX <= sidebarRect.right &&
+            mouseY >= sidebarRect.top && mouseY <= sidebarRect.bottom) {
+            return; // Laisser le scroll normal dans la sidebar
+        }
+    }
+    
+    // Vérifier si le scroll vient des contrôles (section .controls)
+    const controls = document.querySelector('.controls');
+    if (controls) {
+        const controlsRect = controls.getBoundingClientRect();
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+        
+        // Si la souris est dans les contrôles, ne pas zoomer la carte
+        if (mouseX >= controlsRect.left && mouseX <= controlsRect.right &&
+            mouseY >= controlsRect.top && mouseY <= controlsRect.bottom) {
+            return; // Laisser le scroll normal dans les contrôles
+        }
+    }
+    
+    // Sinon, appliquer le zoom sur la carte
     e.preventDefault();
 
-    const rect = mapInner.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    // Position de la souris par rapport au conteneur parent (non transformé)
+    const containerRect = mapContainer.getBoundingClientRect();
+    const mouseX = e.clientX - containerRect.left;
+    const mouseY = e.clientY - containerRect.top;
 
+    // Position de la souris dans l'espace non transformé de mapInner
+    const innerX = (mouseX - offsetX) / zoom;
+    const innerY = (mouseY - offsetY) / zoom;
+
+    // Calculer le nouveau zoom
     const delta = e.deltaY < 0 ? 1.1 : 0.9;
     const newZoom = Math.min(Math.max(zoom * delta, 0.5), 4);
-    const zoomFactor = newZoom / zoom;
 
-    offsetX = mouseX - zoomFactor * (mouseX - offsetX);
-    offsetY = mouseY - zoomFactor * (mouseY - offsetY);
+    // Ajuster le offset pour que le point sous la souris reste fixe
+    offsetX = mouseX - innerX * newZoom;
+    offsetY = mouseY - innerY * newZoom;
 
     zoom = newZoom;
     updateTransform();
@@ -1004,6 +1055,21 @@ layerSelect.addEventListener('change', async() => {
     await loadAnnotations();
     await loadShapes();
     await loadPaths();
+    
+    // Recharger les onglets actifs si nécessaire
+    const activeTab = document.querySelector('.tab-btn.active');
+    if (activeTab) {
+        const tabName = activeTab.dataset.tab;
+        if (tabName === 'characters') {
+            loadCharacters();
+        } else if (tabName === 'places') {
+            loadPlaces();
+        } else if (tabName === 'events') {
+            loadEvents();
+        } else if (tabName === 'media') {
+            loadAllMedia();
+        }
+    }
 });
 
 typeFilter.addEventListener('change', loadAnnotations);
@@ -1188,7 +1254,7 @@ importFileInput.addEventListener('change', async(e) => {
             body: JSON.stringify(data)
         });
 
-        alert(`Import réussi !\n${result.imported.maps} cartes, ${result.imported.layers} layers, ${result.imported.annotations} annotations, ${result.imported.shapes} zones, ${result.imported.paths} chemins, ${result.imported.media} médias`);
+        alert(`Import réussi !\n${result.imported.maps} cartes, ${result.imported.layers} layers, ${result.imported.annotations} annotations, ${result.imported.shapes} zones, ${result.imported.paths} chemins, ${result.imported.media} médias, ${result.imported.missions} missions`);
         
         // Recharger les données
         await loadMaps();
@@ -1198,6 +1264,1113 @@ importFileInput.addEventListener('change', async(e) => {
     }
 
     importFileInput.value = '';
+});
+
+// --- TABS ---
+const tabButtons = document.querySelectorAll('.tab-btn');
+const tabContents = document.querySelectorAll('.tab-content');
+
+tabButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        const tabName = btn.dataset.tab;
+        
+        // Désactiver tous les onglets
+        tabButtons.forEach(b => b.classList.remove('active'));
+        tabContents.forEach(c => c.classList.remove('active'));
+        
+        // Cacher tous les détails
+        document.querySelectorAll('[id$="-detail"]').forEach(el => {
+            if (el.id !== 'mission-detail') el.style.display = 'none';
+        });
+        missionDetail.style.display = 'none';
+        missionForm.style.display = 'none';
+        
+        // Activer l'onglet sélectionné
+        btn.classList.add('active');
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+        
+        // Charger les données selon l'onglet
+        if (tabName === 'characters') {
+            if (currentMap) loadCharacters();
+        } else if (tabName === 'places') {
+            if (currentMap) loadPlaces();
+        } else if (tabName === 'events') {
+            if (currentMap) loadEvents();
+        } else if (tabName === 'media') {
+            if (currentMap) loadAllMedia();
+        } else if (tabName === 'missions') {
+            loadMissions();
+            loadProgression();
+        }
+    });
+});
+
+// --- CHARACTERS, PLACES, EVENTS ---
+async function loadCharacters() {
+    if (!currentMap) return;
+    const characters = currentAnnotations.filter(a => a.type === 'character');
+    renderTypeList('characters-list', characters, 'character');
+}
+
+async function loadPlaces() {
+    if (!currentMap) return;
+    const places = currentAnnotations.filter(a => a.type === 'place');
+    renderTypeList('places-list', places, 'place');
+}
+
+async function loadEvents() {
+    if (!currentMap) return;
+    const events = currentAnnotations.filter(a => a.type === 'event');
+    renderTypeList('events-list', events, 'event');
+}
+
+function renderTypeList(listId, items, type) {
+    const list = document.getElementById(listId);
+    list.innerHTML = '';
+    
+    items.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item.title;
+        li.dataset.id = item.id;
+        li.addEventListener('click', () => showTypeDetail(item, type));
+        list.appendChild(li);
+    });
+}
+
+async function showTypeDetail(item, type) {
+    const detailDiv = document.getElementById(`${type}-detail`);
+    const titleEl = document.getElementById(`${type}-detail-title`);
+    const descEl = document.getElementById(`${type}-detail-description`);
+    const mediaEl = document.getElementById(`${type}-media`);
+    
+    titleEl.textContent = item.title;
+    descEl.textContent = item.description || 'Aucune description';
+    
+    // Charger les médias
+    await loadMediaForAnnotation(item.id, type);
+    
+    detailDiv.style.display = 'block';
+}
+
+// Fonction pour gérer l'upload d'un fichier média
+async function handleMediaFile(file, annotationId, type) {
+    const formData = new FormData();
+    formData.append('mediaFile', file);
+
+    try {
+        const res = await fetch('/api/upload-media', {
+            method: 'POST',
+            body: formData
+        });
+        
+        if (!res.ok) {
+            throw new Error('Erreur upload');
+        }
+        
+        const data = await res.json();
+        if (!data.url || !data.kind) {
+            alert('Erreur upload');
+            return;
+        }
+        
+        // Ajouter le média à l'annotation
+        await fetchJSON(`/api/annotations/${annotationId}/media`, {
+            method: 'POST',
+            body: JSON.stringify({
+                kind: data.kind,
+                url: data.url,
+                description: file.name
+            })
+        });
+        
+        // Recharger les médias
+        await loadMediaForAnnotation(annotationId, type);
+    } catch (err) {
+        console.error('Erreur upload média', err);
+        alert('Erreur lors de l\'upload du fichier');
+    }
+}
+
+async function loadMediaForAnnotation(annotationId, type) {
+    const mediaEl = document.getElementById(`${type}-media`);
+    try {
+        const media = await fetchJSON(`/api/annotations/${annotationId}/media`);
+        mediaEl.innerHTML = '';
+        
+        // Formulaire d'ajout de média
+        const formDiv = document.createElement('div');
+        formDiv.className = 'media-form';
+        formDiv.style.marginBottom = '16px';
+        formDiv.style.padding = '12px';
+        formDiv.style.background = '#2a2a2a';
+        formDiv.style.borderRadius = '4px';
+        
+        // Titre
+        const title = document.createElement('h4');
+        title.style.marginTop = '0';
+        title.textContent = 'Ajouter un média';
+        formDiv.appendChild(title);
+        
+        // Zone de drop
+        const dropZone = document.createElement('div');
+        dropZone.id = `media-drop-zone-${annotationId}`;
+        dropZone.style.cssText = 'border: 2px dashed #555; border-radius: 4px; padding: 20px; text-align: center; margin-bottom: 12px; cursor: pointer; transition: all 0.2s;';
+        dropZone.innerHTML = `
+            <p style="margin: 0; color: #aaa;">📁 Glisse un fichier ici<br />ou clique pour sélectionner</p>
+        `;
+        formDiv.appendChild(dropZone);
+        
+        const fileInput = document.createElement('input');
+        fileInput.type = 'file';
+        fileInput.id = `media-file-input-${annotationId}`;
+        fileInput.style.display = 'none';
+        fileInput.accept = 'image/*,video/*,.pdf,.doc,.docx,.txt,.md';
+        formDiv.appendChild(fileInput);
+        
+        // Section URL manuelle
+        const urlSection = document.createElement('div');
+        urlSection.style.cssText = 'margin-top: 12px; padding-top: 12px; border-top: 1px solid #444;';
+        urlSection.innerHTML = `
+            <p style="margin: 0 0 8px 0; color: #aaa; font-size: 12px;">Ou saisir une URL manuellement :</p>
+            <label style="display: block; margin-bottom: 8px;">
+                Type :
+                <select id="new-media-kind-${annotationId}" style="width: 100%; padding: 4px; margin-top: 4px;">
+                    <option value="image">Image</option>
+                    <option value="video">Vidéo</option>
+                    <option value="link">Lien</option>
+                    <option value="document">Document</option>
+                </select>
+            </label>
+            <label style="display: block; margin-bottom: 8px;">
+                URL :
+                <input type="text" id="new-media-url-${annotationId}" placeholder="https://..." style="width: 100%; padding: 4px; margin-top: 4px;" />
+            </label>
+            <label style="display: block; margin-bottom: 8px;">
+                Description (optionnel) :
+                <input type="text" id="new-media-desc-${annotationId}" placeholder="Description du média" style="width: 100%; padding: 4px; margin-top: 4px;" />
+            </label>
+            <button type="button" id="add-media-btn-${annotationId}" style="padding: 6px 12px;">➕ Ajouter</button>
+        `;
+        formDiv.appendChild(urlSection);
+        mediaEl.appendChild(formDiv);
+        
+        // Gestion du drag & drop
+        const dropZoneEl = document.getElementById(`media-drop-zone-${annotationId}`);
+        const fileInputEl = document.getElementById(`media-file-input-${annotationId}`);
+        
+        dropZoneEl.addEventListener('click', () => {
+            fileInputEl.click();
+        });
+        
+        dropZoneEl.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZoneEl.style.borderColor = '#4a9eff';
+            dropZoneEl.style.background = '#333';
+        });
+        
+        dropZoneEl.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dropZoneEl.style.borderColor = '#555';
+            dropZoneEl.style.background = 'transparent';
+        });
+        
+        dropZoneEl.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dropZoneEl.style.borderColor = '#555';
+            dropZoneEl.style.background = 'transparent';
+            
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                await handleMediaFile(file, annotationId, type);
+            }
+        });
+        
+        fileInputEl.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                await handleMediaFile(file, annotationId, type);
+            }
+        });
+        
+        // Bouton d'ajout de média
+        const addBtn = document.getElementById(`add-media-btn-${annotationId}`);
+        addBtn.addEventListener('click', async () => {
+            const kind = document.getElementById(`new-media-kind-${annotationId}`).value;
+            const url = document.getElementById(`new-media-url-${annotationId}`).value.trim();
+            const description = document.getElementById(`new-media-desc-${annotationId}`).value.trim();
+            
+            if (!url) {
+                alert('L\'URL est obligatoire');
+                return;
+            }
+            
+            try {
+                await fetchJSON(`/api/annotations/${annotationId}/media`, {
+                    method: 'POST',
+                    body: JSON.stringify({ kind, url, description })
+                });
+                
+                // Réinitialiser le formulaire
+                document.getElementById(`new-media-url-${annotationId}`).value = '';
+                document.getElementById(`new-media-desc-${annotationId}`).value = '';
+                
+                // Recharger les médias
+                await loadMediaForAnnotation(annotationId, type);
+            } catch (err) {
+                console.error('Erreur ajout média', err);
+                alert('Erreur lors de l\'ajout du média');
+            }
+        });
+        
+        // Liste des médias existants
+        if (media.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'hint';
+            p.textContent = 'Aucun média';
+            mediaEl.appendChild(p);
+        } else {
+            media.forEach(m => {
+                const div = document.createElement('div');
+                div.className = 'media-item';
+                div.style.position = 'relative';
+                div.style.marginBottom = '12px';
+                div.style.padding = '8px';
+                div.style.background = '#1a1a1a';
+                div.style.borderRadius = '4px';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '✕';
+                deleteBtn.style.position = 'absolute';
+                deleteBtn.style.top = '4px';
+                deleteBtn.style.right = '4px';
+                deleteBtn.style.background = '#d32f2f';
+                deleteBtn.style.border = 'none';
+                deleteBtn.style.color = 'white';
+                deleteBtn.style.borderRadius = '3px';
+                deleteBtn.style.cursor = 'pointer';
+                deleteBtn.style.padding = '2px 6px';
+                deleteBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (confirm('Supprimer ce média ?')) {
+                        try {
+                            await fetchJSON(`/api/media/${m.id}`, { method: 'DELETE' });
+                            await loadMediaForAnnotation(annotationId, type);
+                        } catch (err) {
+                            console.error('Erreur suppression média', err);
+                            alert('Erreur lors de la suppression');
+                        }
+                    }
+                });
+                
+                if (m.kind === 'image') {
+                    div.innerHTML = `
+                        <img src="${m.url}" alt="${m.description || ''}" style="max-width: 100%; border-radius: 4px; margin-bottom: 8px;" />
+                        <a href="${m.url}" target="_blank" style="display: block; margin-bottom: 4px;">${m.url}</a>
+                        ${m.description ? `<p style="margin: 0; color: #aaa; font-size: 12px;">${m.description}</p>` : ''}
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <a href="${m.url}" target="_blank" style="display: block; margin-bottom: 4px;">${m.url}</a>
+                        ${m.description ? `<p style="margin: 0; color: #aaa; font-size: 12px;">${m.description}</p>` : ''}
+                    `;
+                }
+                div.appendChild(deleteBtn);
+                mediaEl.appendChild(div);
+            });
+        }
+    } catch (err) {
+        mediaEl.innerHTML = '<p class="hint">Erreur de chargement des médias</p>';
+    }
+}
+
+// --- ALL MEDIA ---
+async function loadAllMedia() {
+    if (!currentMap) return;
+    const mediaList = document.getElementById('all-media-list');
+    mediaList.innerHTML = '<p class="hint">Chargement...</p>';
+    
+    try {
+        const allMedia = [];
+        for (const annot of currentAnnotations) {
+            try {
+                const media = await fetchJSON(`/api/annotations/${annot.id}/media`);
+                media.forEach(m => {
+                    allMedia.push({ ...m, annotation: annot });
+                });
+            } catch (err) {
+                console.error(`Erreur chargement médias pour annotation ${annot.id}`, err);
+            }
+        }
+        
+        mediaList.innerHTML = '';
+        if (allMedia.length === 0) {
+            mediaList.innerHTML = '<p class="hint">Aucun média</p>';
+        } else {
+            allMedia.forEach(m => {
+                const div = document.createElement('div');
+                div.className = 'media-item';
+                div.style.position = 'relative';
+                div.style.marginBottom = '12px';
+                div.style.padding = '8px';
+                div.style.background = '#1a1a1a';
+                div.style.borderRadius = '4px';
+                
+                const annotTitle = m.annotation ? m.annotation.title : 'Inconnu';
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.textContent = '✕';
+                deleteBtn.style.position = 'absolute';
+                deleteBtn.style.top = '4px';
+                deleteBtn.style.right = '4px';
+                deleteBtn.style.background = '#d32f2f';
+                deleteBtn.style.border = 'none';
+                deleteBtn.style.color = 'white';
+                deleteBtn.style.borderRadius = '3px';
+                deleteBtn.style.cursor = 'pointer';
+                deleteBtn.style.padding = '2px 6px';
+                deleteBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    if (confirm('Supprimer ce média ?')) {
+                        try {
+                            await fetchJSON(`/api/media/${m.id}`, { method: 'DELETE' });
+                            await loadAllMedia();
+                        } catch (err) {
+                            console.error('Erreur suppression média', err);
+                            alert('Erreur lors de la suppression');
+                        }
+                    }
+                });
+                
+                if (m.kind === 'image') {
+                    div.innerHTML = `
+                        <img src="${m.url}" alt="${m.description || ''}" style="max-width: 100%; border-radius: 4px; margin-bottom: 8px;" />
+                        <p style="margin: 0 0 4px 0;"><strong>${annotTitle}</strong></p>
+                        <a href="${m.url}" target="_blank" style="display: block; margin-bottom: 4px;">${m.url}</a>
+                        ${m.description ? `<p style="margin: 0; color: #aaa; font-size: 12px;">${m.description}</p>` : ''}
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <p style="margin: 0 0 4px 0;"><strong>${annotTitle}</strong></p>
+                        <a href="${m.url}" target="_blank" style="display: block; margin-bottom: 4px;">${m.url}</a>
+                        ${m.description ? `<p style="margin: 0; color: #aaa; font-size: 12px;">${m.description}</p>` : ''}
+                    `;
+                }
+                div.appendChild(deleteBtn);
+                mediaList.appendChild(div);
+            });
+        }
+    } catch (err) {
+        mediaList.innerHTML = '<p class="hint">Erreur de chargement</p>';
+    }
+}
+
+// --- MISSIONS ---
+const newMissionBtn = document.getElementById('new-mission-btn');
+const missionForm = document.getElementById('mission-form');
+const missionIdInput = document.getElementById('mission-id');
+const missionTitleInput = document.getElementById('mission-title');
+const missionDescInput = document.getElementById('mission-description');
+const missionStatusInput = document.getElementById('mission-status');
+const missionPriorityInput = document.getElementById('mission-priority');
+const saveMissionBtn = document.getElementById('save-mission-btn');
+const cancelMissionBtn = document.getElementById('cancel-mission-btn');
+const missionsList = document.getElementById('missions-list');
+const missionDetail = document.getElementById('mission-detail');
+const addAnnotationToMissionBtn = document.getElementById('add-annotation-to-mission-btn');
+const addPathToMissionBtn = document.getElementById('add-path-to-mission-btn');
+const addRequiredMissionBtn = document.getElementById('add-required-mission-btn');
+const showGraphBtn = document.getElementById('show-graph-btn');
+const missionGraphContainer = document.getElementById('mission-graph-container');
+const missionGraphCanvas = document.getElementById('mission-graph-canvas');
+const progressionPanel = document.getElementById('progression-content');
+
+let currentMissions = [];
+let selectedMissionId = null;
+
+newMissionBtn.addEventListener('click', () => {
+    missionIdInput.value = '';
+    missionTitleInput.value = '';
+    missionDescInput.value = '';
+    missionStatusInput.value = 'todo';
+    missionPriorityInput.value = '0';
+    missionForm.style.display = 'block';
+    missionDetail.style.display = 'none';
+});
+
+cancelMissionBtn.addEventListener('click', () => {
+    missionForm.style.display = 'none';
+});
+
+saveMissionBtn.addEventListener('click', async() => {
+    const id = missionIdInput.value || null;
+    const title = missionTitleInput.value.trim();
+    if (!title) {
+        alert('Le titre est obligatoire');
+        return;
+    }
+
+    const body = {
+        map_id: currentMap ? currentMap.id : null,
+        title,
+        description: missionDescInput.value.trim(),
+        status: missionStatusInput.value,
+        priority: parseInt(missionPriorityInput.value) || 0
+    };
+
+    try {
+        if (id) {
+            await fetchJSON(`/api/missions/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify(body)
+            });
+        } else {
+            await fetchJSON('/api/missions', {
+                method: 'POST',
+                body: JSON.stringify(body)
+            });
+        }
+        missionForm.style.display = 'none';
+        await loadMissions();
+    } catch (err) {
+        console.error('Erreur sauvegarde mission', err);
+        alert('Erreur lors de la sauvegarde');
+    }
+});
+
+async function loadMissions() {
+    const params = new URLSearchParams();
+    if (currentMap) params.set('map_id', currentMap.id);
+    
+    const missions = await fetchJSON(`/api/missions?${params.toString()}`);
+    currentMissions = missions;
+    await renderMissionsList();
+    await loadProgression();
+}
+
+async function renderMissionsList() {
+    missionsList.innerHTML = '';
+    
+    if (currentMissions.length === 0) {
+        missionsList.innerHTML = '<li class="hint">Aucune mission</li>';
+        return;
+    }
+
+    // Charger les dépendances pour chaque mission
+    for (const m of currentMissions) {
+        try {
+            const missionDetail = await fetchJSON(`/api/missions/${m.id}`);
+            m.requiredMissions = missionDetail.requiredMissions || [];
+        } catch (err) {
+            m.requiredMissions = [];
+        }
+    }
+
+    currentMissions.forEach(m => {
+        const li = document.createElement('li');
+        const isUnlocked = m.requiredMissions.length === 0 || 
+            m.requiredMissions.every(req => {
+                const reqMission = currentMissions.find(mission => mission.id === req.id);
+                return reqMission && reqMission.status === 'completed';
+            });
+        
+        li.innerHTML = `
+            <div>
+                <strong>${m.title}</strong>
+                <span class="mission-status ${m.status}">${getStatusLabel(m.status)}</span>
+                ${!isUnlocked ? '<span style="color: #ff9800; font-size: 11px;">🔒 Bloquée</span>' : ''}
+            </div>
+            <div style="font-size: 11px; color: #aaa; margin-top: 4px;">
+                ${m.description || 'Aucune description'}
+            </div>
+        `;
+        li.style.opacity = isUnlocked ? '1' : '0.6';
+        li.addEventListener('click', () => showMissionDetail(m.id));
+        missionsList.appendChild(li);
+    });
+}
+
+function getStatusLabel(status) {
+    const labels = {
+        todo: 'À faire',
+        in_progress: 'En cours',
+        completed: 'Terminée',
+        cancelled: 'Annulée'
+    };
+    return labels[status] || status;
+}
+
+async function showMissionDetail(missionId) {
+    selectedMissionId = missionId;
+    missionForm.style.display = 'none';
+    
+    try {
+        const mission = await fetchJSON(`/api/missions/${missionId}`);
+        
+        document.getElementById('mission-detail-title').textContent = mission.title;
+        document.getElementById('mission-detail-description').textContent = mission.description || 'Aucune description';
+        document.getElementById('mission-detail-status').textContent = getStatusLabel(mission.status);
+        document.getElementById('mission-detail-priority').textContent = mission.priority || 0;
+        
+        // Afficher les prérequis
+        const requiredList = document.getElementById('mission-required-list');
+        requiredList.innerHTML = '';
+        if (mission.requiredMissions && mission.requiredMissions.length > 0) {
+            mission.requiredMissions.forEach(req => {
+                const li = document.createElement('li');
+                const reqMission = currentMissions.find(m => m.id === req.id);
+                const status = reqMission ? getStatusLabel(reqMission.status) : 'Inconnue';
+                li.innerHTML = `
+                    <span>${req.title} (${status})</span>
+                    <button class="remove-required-btn" data-required-id="${req.id}">✕</button>
+                `;
+                li.querySelector('.remove-required-btn').addEventListener('click', async(e) => {
+                    e.stopPropagation();
+                    if (confirm('Supprimer ce prérequis ?')) {
+                        await fetchJSON(`/api/missions/${missionId}/dependencies/${req.id}`, { method: 'DELETE' });
+                        await showMissionDetail(missionId);
+                        await loadMissions();
+                    }
+                });
+                requiredList.appendChild(li);
+            });
+        } else {
+            requiredList.innerHTML = '<li class="hint">Aucun prérequis</li>';
+        }
+        
+        // Afficher les missions qui dépendent de celle-ci
+        const dependentList = document.getElementById('mission-dependent-list');
+        dependentList.innerHTML = '';
+        if (mission.dependentMissions && mission.dependentMissions.length > 0) {
+            mission.dependentMissions.forEach(dep => {
+                const li = document.createElement('li');
+                li.textContent = `${dep.title} (${getStatusLabel(dep.status)})`;
+                dependentList.appendChild(li);
+            });
+        } else {
+            dependentList.innerHTML = '<li class="hint">Aucune mission ne dépend de celle-ci</li>';
+        }
+        
+        // Ajouter un bouton d'édition
+        let editBtn = document.getElementById('edit-mission-btn');
+        if (!editBtn) {
+            editBtn = document.createElement('button');
+            editBtn.id = 'edit-mission-btn';
+            editBtn.textContent = '✏️ Modifier';
+            editBtn.style.marginTop = '8px';
+            editBtn.addEventListener('click', () => editMission(mission));
+            const titleEl = document.getElementById('mission-detail-title');
+            titleEl.parentElement.insertBefore(editBtn, titleEl.nextSibling);
+        }
+        editBtn.onclick = () => editMission(mission);
+        
+        // Ajouter un bouton de suppression
+        let deleteBtn = document.getElementById('delete-mission-btn');
+        if (!deleteBtn) {
+            deleteBtn = document.createElement('button');
+            deleteBtn.id = 'delete-mission-btn';
+            deleteBtn.textContent = '🗑 Supprimer';
+            deleteBtn.style.marginTop = '4px';
+            deleteBtn.style.background = '#d32f2f';
+            deleteBtn.addEventListener('click', async() => {
+                if (confirm('Supprimer cette mission ?')) {
+                    await fetchJSON(`/api/missions/${missionId}`, { method: 'DELETE' });
+                    missionDetail.style.display = 'none';
+                    await loadMissions();
+                }
+            });
+            editBtn.parentElement.appendChild(deleteBtn);
+        }
+        
+        // Afficher les annotations liées
+        const annotationsList = document.getElementById('mission-annotations-list');
+        annotationsList.innerHTML = '';
+        if (mission.annotations && mission.annotations.length > 0) {
+            mission.annotations.forEach(annot => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>[${annot.type}] ${annot.title}</span>
+                    <button class="remove-annotation-btn" data-annotation-id="${annot.id}">✕</button>
+                `;
+                li.querySelector('.remove-annotation-btn').addEventListener('click', async(e) => {
+                    e.stopPropagation();
+                    if (confirm('Délier cette annotation de la mission ?')) {
+                        await fetchJSON(`/api/missions/${missionId}/annotations/${annot.id}`, { method: 'DELETE' });
+                        await showMissionDetail(missionId);
+                    }
+                });
+                annotationsList.appendChild(li);
+            });
+        } else {
+            annotationsList.innerHTML = '<li class="hint">Aucune annotation liée</li>';
+        }
+        
+        // Afficher les chemins liés
+        const missionPathsList = document.getElementById('mission-paths-list');
+        missionPathsList.innerHTML = '';
+        if (mission.paths && mission.paths.length > 0) {
+            mission.paths.forEach(path => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <span>🛤️ ${path.name || '(Chemin sans nom)'}</span>
+                    <button class="remove-path-btn" data-path-id="${path.id}">✕</button>
+                `;
+                li.querySelector('.remove-path-btn').addEventListener('click', async(e) => {
+                    e.stopPropagation();
+                    if (confirm('Délier ce chemin de la mission ?')) {
+                        await fetchJSON(`/api/missions/${missionId}/paths/${path.id}`, { method: 'DELETE' });
+                        await showMissionDetail(missionId);
+                    }
+                });
+                missionPathsList.appendChild(li);
+            });
+        } else {
+            missionPathsList.innerHTML = '<li class="hint">Aucun chemin lié</li>';
+        }
+        
+        missionDetail.style.display = 'block';
+    } catch (err) {
+        console.error('Erreur chargement mission', err);
+        alert('Erreur lors du chargement de la mission');
+    }
+}
+
+function editMission(mission) {
+    missionIdInput.value = mission.id;
+    missionTitleInput.value = mission.title;
+    missionDescInput.value = mission.description || '';
+    missionStatusInput.value = mission.status;
+    missionPriorityInput.value = mission.priority || 0;
+    missionForm.style.display = 'block';
+    missionDetail.style.display = 'none';
+}
+
+addAnnotationToMissionBtn.addEventListener('click', async() => {
+    if (!selectedMissionId) return;
+    if (currentAnnotations.length === 0) {
+        alert('Aucune annotation disponible');
+        return;
+    }
+    
+    // Créer un sélecteur visuel
+    const select = document.createElement('select');
+    select.style.width = '100%';
+    select.style.padding = '6px';
+    select.style.marginTop = '8px';
+    select.innerHTML = '<option value="">-- Sélectionner une annotation --</option>';
+    currentAnnotations.forEach(a => {
+        const option = document.createElement('option');
+        option.value = a.id;
+        option.textContent = `[${a.type}] ${a.title}`;
+        select.appendChild(option);
+    });
+    
+    const container = document.createElement('div');
+    container.style.padding = '10px';
+    container.style.background = '#222';
+    container.style.borderRadius = '4px';
+    container.style.marginTop = '8px';
+    container.appendChild(select);
+    
+    const btnContainer = document.createElement('div');
+    btnContainer.style.marginTop = '8px';
+    btnContainer.style.display = 'flex';
+    btnContainer.style.gap = '8px';
+    
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Lier';
+    confirmBtn.addEventListener('click', async() => {
+        const annotId = select.value;
+        if (!annotId) {
+            alert('Veuillez sélectionner une annotation');
+            return;
+        }
+        try {
+            await fetchJSON(`/api/missions/${selectedMissionId}/annotations`, {
+                method: 'POST',
+                body: JSON.stringify({ annotation_id: parseInt(annotId) })
+            });
+            container.remove();
+            await showMissionDetail(selectedMissionId);
+        } catch (err) {
+            console.error('Erreur liaison annotation', err);
+            alert('Erreur lors de la liaison de l\'annotation');
+        }
+    });
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Annuler';
+    cancelBtn.addEventListener('click', () => container.remove());
+    
+    btnContainer.appendChild(confirmBtn);
+    btnContainer.appendChild(cancelBtn);
+    container.appendChild(btnContainer);
+    
+    addAnnotationToMissionBtn.parentElement.appendChild(container);
+});
+
+// Lier un chemin à une mission
+addPathToMissionBtn.addEventListener('click', async() => {
+    if (!selectedMissionId) return;
+    if (!currentMap) {
+        alert('Veuillez sélectionner une carte d\'abord');
+        return;
+    }
+    
+    // Charger les chemins disponibles
+    const params = new URLSearchParams();
+    if (layerSelect.value) params.set('layer_id', layerSelect.value);
+    const paths = await fetchJSON(`/api/maps/${currentMap.id}/paths?${params.toString()}`);
+    
+    if (paths.length === 0) {
+        alert('Aucun chemin disponible');
+        return;
+    }
+    
+    // Créer un sélecteur visuel
+    const select = document.createElement('select');
+    select.style.width = '100%';
+    select.style.padding = '6px';
+    select.style.marginTop = '8px';
+    select.innerHTML = '<option value="">-- Sélectionner un chemin --</option>';
+    paths.forEach(p => {
+        const option = document.createElement('option');
+        option.value = p.id;
+        option.textContent = `${p.name || '(Chemin sans nom)'}`;
+        select.appendChild(option);
+    });
+    
+    const container = document.createElement('div');
+    container.style.padding = '10px';
+    container.style.background = '#222';
+    container.style.borderRadius = '4px';
+    container.style.marginTop = '8px';
+    container.appendChild(select);
+    
+    const btnContainer = document.createElement('div');
+    btnContainer.style.marginTop = '8px';
+    btnContainer.style.display = 'flex';
+    btnContainer.style.gap = '8px';
+    
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Lier';
+    confirmBtn.addEventListener('click', async() => {
+        const pathId = select.value;
+        if (!pathId) {
+            alert('Veuillez sélectionner un chemin');
+            return;
+        }
+        try {
+            await fetchJSON(`/api/missions/${selectedMissionId}/paths`, {
+                method: 'POST',
+                body: JSON.stringify({ path_id: parseInt(pathId) })
+            });
+            container.remove();
+            await showMissionDetail(selectedMissionId);
+        } catch (err) {
+            console.error('Erreur liaison chemin', err);
+            alert('Erreur lors de la liaison du chemin');
+        }
+    });
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Annuler';
+    cancelBtn.addEventListener('click', () => container.remove());
+    
+    btnContainer.appendChild(confirmBtn);
+    btnContainer.appendChild(cancelBtn);
+    container.appendChild(btnContainer);
+    addPathToMissionBtn.parentElement.appendChild(container);
+});
+
+// Ajouter un prérequis à une mission
+addRequiredMissionBtn.addEventListener('click', async() => {
+    if (!selectedMissionId) return;
+    
+    const availableMissions = currentMissions.filter(m => 
+        m.id !== parseInt(selectedMissionId) && 
+        !currentMissions.find(req => req.id === selectedMissionId && req.requiredMissions && req.requiredMissions.some(r => r.id === m.id))
+    );
+    
+    if (availableMissions.length === 0) {
+        alert('Aucune mission disponible comme prérequis');
+        return;
+    }
+    
+    const select = document.createElement('select');
+    select.style.width = '100%';
+    select.style.padding = '6px';
+    select.style.marginTop = '8px';
+    select.innerHTML = '<option value="">-- Sélectionner une mission --</option>';
+    availableMissions.forEach(m => {
+        const option = document.createElement('option');
+        option.value = m.id;
+        option.textContent = `${m.title} (${getStatusLabel(m.status)})`;
+        select.appendChild(option);
+    });
+    
+    const container = document.createElement('div');
+    container.style.padding = '10px';
+    container.style.background = '#222';
+    container.style.borderRadius = '4px';
+    container.style.marginTop = '8px';
+    container.appendChild(select);
+    
+    const btnContainer = document.createElement('div');
+    btnContainer.style.marginTop = '8px';
+    btnContainer.style.display = 'flex';
+    btnContainer.style.gap = '8px';
+    
+    const confirmBtn = document.createElement('button');
+    confirmBtn.textContent = 'Ajouter';
+    confirmBtn.addEventListener('click', async() => {
+        const requiredId = select.value;
+        if (!requiredId) {
+            alert('Veuillez sélectionner une mission');
+            return;
+        }
+        try {
+            await fetchJSON(`/api/missions/${selectedMissionId}/dependencies`, {
+                method: 'POST',
+                body: JSON.stringify({ required_mission_id: parseInt(requiredId) })
+            });
+            container.remove();
+            await showMissionDetail(selectedMissionId);
+            await loadMissions();
+        } catch (err) {
+            console.error('Erreur ajout prérequis', err);
+            alert('Erreur lors de l\'ajout du prérequis');
+        }
+    });
+    
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = 'Annuler';
+    cancelBtn.addEventListener('click', () => container.remove());
+    
+    btnContainer.appendChild(confirmBtn);
+    btnContainer.appendChild(cancelBtn);
+    container.appendChild(btnContainer);
+    addRequiredMissionBtn.parentElement.appendChild(container);
+});
+
+// Charger la progression
+async function loadProgression() {
+    try {
+        const params = new URLSearchParams();
+        if (currentMap) params.set('map_id', currentMap.id);
+        
+        const progression = await fetchJSON(`/api/progression?${params.toString()}`);
+        
+        progressionPanel.innerHTML = `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                <div>
+                    <strong>Missions</strong>
+                    <div style="font-size: 24px; font-weight: bold; color: #4a9eff;">
+                        ${progression.missions.completed} / ${progression.missions.total}
+                    </div>
+                    <div style="background: #333; height: 8px; border-radius: 4px; margin-top: 4px;">
+                        <div style="background: #4a9eff; height: 100%; width: ${progression.missions.progress}%; border-radius: 4px;"></div>
+                    </div>
+                    <div style="font-size: 11px; color: #aaa; margin-top: 4px;">
+                        ${progression.missions.progress}% complétées • ${progression.missions.unlocked} débloquées
+                    </div>
+                </div>
+                <div>
+                    <strong>Annotations</strong>
+                    <div style="font-size: 24px; font-weight: bold; color: #4caf50;">
+                        ${progression.annotations.unlocked} / ${progression.annotations.total}
+                    </div>
+                    <div style="background: #333; height: 8px; border-radius: 4px; margin-top: 4px;">
+                        <div style="background: #4caf50; height: 100%; width: ${progression.annotations.progress}%; border-radius: 4px;"></div>
+                    </div>
+                    <div style="font-size: 11px; color: #aaa; margin-top: 4px;">
+                        ${progression.annotations.progress}% débloquées • ${progression.annotations.locked} bloquées
+                    </div>
+                </div>
+            </div>
+            <div style="text-align: center; padding-top: 8px; border-top: 1px solid #444;">
+                <strong>Progression globale : ${progression.overall.progress}%</strong>
+            </div>
+        `;
+    } catch (err) {
+        console.error('Erreur chargement progression', err);
+        progressionPanel.innerHTML = '<p class="hint">Erreur de chargement</p>';
+    }
+}
+
+// Afficher le graphique des missions
+showGraphBtn.addEventListener('click', () => {
+    missionGraphContainer.style.display = missionGraphContainer.style.display === 'none' ? 'block' : 'none';
+    if (missionGraphContainer.style.display === 'block') {
+        drawMissionGraph();
+    }
+});
+
+async function drawMissionGraph() {
+    const canvas = missionGraphCanvas;
+    const ctx = canvas.getContext('2d');
+    
+    // Ajuster la taille du canvas
+    const container = missionGraphContainer;
+    canvas.width = container.clientWidth - 32;
+    canvas.height = 400;
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    if (currentMissions.length === 0) {
+        ctx.fillStyle = '#aaa';
+        ctx.font = '16px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText('Aucune mission à afficher', canvas.width / 2, canvas.height / 2);
+        return;
+    }
+    
+    // Charger les dépendances
+    const missionsWithDeps = [];
+    for (const m of currentMissions) {
+        try {
+            const missionDetail = await fetchJSON(`/api/missions/${m.id}`);
+            missionsWithDeps.push({
+                ...m,
+                requiredMissions: missionDetail.requiredMissions || []
+            });
+        } catch (err) {
+            missionsWithDeps.push({ ...m, requiredMissions: [] });
+        }
+    }
+    
+    // Positionnement en grille
+    const cols = Math.ceil(Math.sqrt(missionsWithDeps.length));
+    const rows = Math.ceil(missionsWithDeps.length / cols);
+    const nodeWidth = (canvas.width - 40) / cols;
+    const nodeHeight = (canvas.height - 40) / rows;
+    const nodeRadius = 30;
+    
+    const nodes = [];
+    missionsWithDeps.forEach((mission, index) => {
+        const col = index % cols;
+        const row = Math.floor(index / cols);
+        const x = 20 + col * nodeWidth + nodeWidth / 2;
+        const y = 20 + row * nodeHeight + nodeHeight / 2;
+        
+        nodes.push({
+            mission,
+            x,
+            y,
+            id: mission.id
+        });
+    });
+    
+    // Dessiner les flèches (dépendances)
+    ctx.strokeStyle = '#666';
+    ctx.lineWidth = 2;
+    missionsWithDeps.forEach(mission => {
+        const node = nodes.find(n => n.id === mission.id);
+        if (!node) return;
+        
+        mission.requiredMissions.forEach(req => {
+            const reqNode = nodes.find(n => n.id === req.id);
+            if (!reqNode) return;
+            
+            // Calculer l'angle et la position de la flèche
+            const dx = node.x - reqNode.x;
+            const dy = node.y - reqNode.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx);
+            
+            // Point de départ (bord du cercle requis)
+            const startX = reqNode.x + Math.cos(angle) * nodeRadius;
+            const startY = reqNode.y + Math.sin(angle) * nodeRadius;
+            
+            // Point d'arrivée (bord du cercle mission)
+            const endX = node.x - Math.cos(angle) * nodeRadius;
+            const endY = node.y - Math.sin(angle) * nodeRadius;
+            
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+            
+            // Flèche
+            const arrowLength = 8;
+            const arrowAngle = Math.PI / 6;
+            ctx.beginPath();
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(
+                endX - arrowLength * Math.cos(angle - arrowAngle),
+                endY - arrowLength * Math.sin(angle - arrowAngle)
+            );
+            ctx.moveTo(endX, endY);
+            ctx.lineTo(
+                endX - arrowLength * Math.cos(angle + arrowAngle),
+                endY - arrowLength * Math.sin(angle + arrowAngle)
+            );
+            ctx.stroke();
+        });
+    });
+    
+    // Dessiner les nœuds
+    nodes.forEach(node => {
+        const mission = node.mission;
+        const isCompleted = mission.status === 'completed';
+        const isUnlocked = mission.requiredMissions.length === 0 || 
+            mission.requiredMissions.every(req => {
+                const reqMission = missionsWithDeps.find(m => m.id === req.id);
+                return reqMission && reqMission.status === 'completed';
+            });
+        
+        // Cercle
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, nodeRadius, 0, Math.PI * 2);
+        ctx.fillStyle = isCompleted ? '#4caf50' : (isUnlocked ? '#4a9eff' : '#666');
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Texte
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px Arial';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const text = mission.title.length > 15 ? mission.title.substring(0, 15) + '...' : mission.title;
+        ctx.fillText(text, node.x, node.y);
+        
+        // Icône de statut
+        if (!isUnlocked) {
+            ctx.fillStyle = '#ff9800';
+            ctx.font = '16px Arial';
+            ctx.fillText('🔒', node.x + nodeRadius - 8, node.y - nodeRadius + 8);
+        }
+    });
+}
+
+// Recharger les missions quand on change de map
+mapSelect.addEventListener('change', async() => {
+    await onMapChange();
+    if (document.getElementById('tab-missions').classList.contains('active')) {
+        await loadMissions();
+        await loadProgression();
+    }
+});
+
+// --- EMPÊCHER LE SCROLL DE LA CARTE DEPUIS LA SIDEBAR ET LES CONTRÔLES ---
+document.addEventListener('DOMContentLoaded', () => {
+    const sidebar = document.querySelector('.sidebar');
+    const controls = document.querySelector('.controls');
+    
+    // Empêcher la propagation du scroll depuis la sidebar
+    if (sidebar) {
+        sidebar.addEventListener('wheel', (e) => {
+            e.stopPropagation();
+        }, { passive: true });
+    }
+    
+    // Empêcher la propagation du scroll depuis les contrôles
+    if (controls) {
+        controls.addEventListener('wheel', (e) => {
+            e.stopPropagation();
+        }, { passive: true });
+    }
 });
 
 // --- INIT ---
