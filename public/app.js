@@ -34,9 +34,21 @@ const mapFileInput = document.getElementById('map-file-input');
 
 // Shapes
 const shapeNameInput = document.getElementById('shape-name');
+const shapeStyleSelect = document.getElementById('shape-style');
 const startShapeBtn = document.getElementById('start-shape-btn');
 const finishShapeBtn = document.getElementById('finish-shape-btn');
 const shapesList = document.getElementById('shapes-list');
+
+// Paths
+const pathNameInput = document.getElementById('path-name');
+const startPathBtn = document.getElementById('start-path-btn');
+const finishPathBtn = document.getElementById('finish-path-btn');
+const pathsList = document.getElementById('paths-list');
+
+// Import/Export
+const exportBtn = document.getElementById('export-btn');
+const importBtn = document.getElementById('import-btn');
+const importFileInput = document.getElementById('import-file-input');
 
 // State
 let currentMap = null;
@@ -50,6 +62,12 @@ let currentShapePoints = []; // [{x,y}]
 let currentShapes = [];
 let selectedShapeId = null; // shape sélectionnée
 let draggingShapePoint = null; // { shapeId, pointIndex }
+
+let drawingPath = false;
+let currentPathPoints = []; // [{x,y}]
+let currentPaths = [];
+let selectedPathId = null; // path sélectionné
+let draggingPathPoint = null; // { pathId, pointIndex }
 
 // Canvas image
 let mapImageObj = null;
@@ -175,6 +193,8 @@ function drawMapCanvas() {
         });
         mapCtx.closePath();
 
+        const style = (s.meta && s.meta.style) || 'filled';
+        
         if (s.id === selectedShapeId) {
             mapCtx.fillStyle = 'rgba(255, 255, 255, 0.10)';
             mapCtx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
@@ -183,8 +203,20 @@ function drawMapCanvas() {
             mapCtx.strokeStyle = 'rgba(144, 202, 249, 1)';
         }
 
-        mapCtx.fill();
+        // Appliquer le style
+        if (style === 'dashed') {
+            mapCtx.setLineDash([8, 4]);
+        } else if (style === 'hatched') {
+            mapCtx.setLineDash([2, 4]);
+        } else {
+            mapCtx.setLineDash([]);
+        }
+
+        if (style !== 'dashed' && style !== 'hatched') {
+            mapCtx.fill();
+        }
         mapCtx.stroke();
+        mapCtx.setLineDash([]);
     });
 
     // Dessiner les "coins" de la shape sélectionnée
@@ -219,6 +251,73 @@ function drawMapCanvas() {
         mapCtx.setLineDash([4, 2]);
         mapCtx.stroke();
         mapCtx.setLineDash([]);
+    }
+
+    // Paths existants
+    mapCtx.lineWidth = 3;
+    currentPaths.forEach(p => {
+        const pts = p.path;
+        if (!pts || pts.length < 2) return;
+
+        mapCtx.beginPath();
+        pts.forEach((pt, i) => {
+            const x = pt.x * cw;
+            const y = pt.y * ch;
+            if (i === 0) mapCtx.moveTo(x, y);
+            else mapCtx.lineTo(x, y);
+        });
+
+        if (p.id === selectedPathId) {
+            mapCtx.strokeStyle = 'rgba(255, 193, 7, 0.9)';
+        } else {
+            mapCtx.strokeStyle = 'rgba(76, 175, 80, 0.8)';
+        }
+
+        mapCtx.stroke();
+    });
+
+    // Dessin en cours (path en cours de création)
+    if (drawingPath && currentPathPoints.length >= 1) {
+        mapCtx.beginPath();
+        currentPathPoints.forEach((p, i) => {
+            const x = p.x * cw;
+            const y = p.y * ch;
+            if (i === 0) mapCtx.moveTo(x, y);
+            else mapCtx.lineTo(x, y);
+        });
+        mapCtx.strokeStyle = 'rgba(76, 175, 80, 0.8)';
+        mapCtx.setLineDash([6, 3]);
+        mapCtx.stroke();
+        mapCtx.setLineDash([]);
+
+        // Dessiner les points du chemin
+        currentPathPoints.forEach(p => {
+            const x = p.x * cw;
+            const y = p.y * ch;
+            mapCtx.fillStyle = 'rgba(76, 175, 80, 1)';
+            mapCtx.beginPath();
+            mapCtx.arc(x, y, 4, 0, Math.PI * 2);
+            mapCtx.fill();
+        });
+    }
+
+    // Dessiner les "coins" du path sélectionné
+    if (selectedPathId) {
+        const path = currentPaths.find(p => p.id === selectedPathId);
+        if (path && path.path && path.path.length) {
+            const handleRadius = 6;
+            mapCtx.fillStyle = '#ffeb3b';
+            mapCtx.strokeStyle = '#000';
+
+            path.path.forEach(p => {
+                const x = p.x * cw;
+                const y = p.y * ch;
+                mapCtx.beginPath();
+                mapCtx.arc(x, y, handleRadius, 0, Math.PI * 2);
+                mapCtx.fill();
+                mapCtx.stroke();
+            });
+        }
     }
 }
 
@@ -406,6 +505,13 @@ mapWrapper.addEventListener('click', (e) => {
     // Mode dessin de shape
     if (drawingShape) {
         currentShapePoints.push(coords);
+        drawMapCanvas();
+        return;
+    }
+
+    // Mode dessin de path
+    if (drawingPath) {
+        currentPathPoints.push(coords);
         drawMapCanvas();
         return;
     }
@@ -709,11 +815,13 @@ finishShapeBtn.addEventListener('click', async() => {
     }
 
     const name = shapeNameInput.value.trim() || '';
+    const style = shapeStyleSelect.value || 'filled';
     const body = {
         map_id: currentMap.id,
         layer_id: layerSelect.value || null,
         name,
-        points: currentShapePoints
+        points: currentShapePoints,
+        meta: { style }
     };
 
     await fetchJSON('/api/shapes', {
@@ -730,14 +838,41 @@ finishShapeBtn.addEventListener('click', async() => {
     await loadShapes();
 });
 
-// --- ÉDITION DES SHAPES : drag des coins ---
+// --- ÉDITION DES SHAPES ET PATHS : drag des coins ---
 mapCanvas.addEventListener('mousedown', (e) => {
     if (!currentMap) return;
-    if (drawingShape) return; // si on dessine une nouvelle shape, pas d'édition
+    if (drawingShape || drawingPath) return; // si on dessine, pas d'édition
 
     const coords = getRelativeCoordsFromEvent(e);
     if (!coords) return;
 
+    // Vérifier si on clique sur un handle de path
+    if (selectedPathId) {
+        const path = currentPaths.find(p => p.id === selectedPathId);
+        if (path && path.path) {
+            const cw = mapCanvas.width;
+            const ch = mapCanvas.height;
+            const pxX = coords.x * cw;
+            const pxY = coords.y * ch;
+            const handleRadius = 8;
+
+            for (let i = 0; i < path.path.length; i++) {
+                const p = path.path[i];
+                const hx = p.x * cw;
+                const hy = p.y * ch;
+                const dx = pxX - hx;
+                const dy = pxY - hy;
+                if (dx * dx + dy * dy <= handleRadius * handleRadius) {
+                    draggingPathPoint = { pathId: path.id, pointIndex: i };
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+            }
+        }
+    }
+
+    // Vérifier si on clique sur un handle de shape
     const handle = getHandleAtCoords(coords);
     if (handle) {
         draggingShapePoint = {
@@ -745,7 +880,7 @@ mapCanvas.addEventListener('mousedown', (e) => {
             pointIndex: handle.pointIndex
         };
         e.preventDefault();
-        e.stopPropagation(); // évite le click pour création d'annotation
+        e.stopPropagation();
     }
 });
 
@@ -807,6 +942,30 @@ window.addEventListener('mousemove', (e) => {
 });
 
 window.addEventListener('mouseup', async(e) => {
+    // Fin drag point de path -> sauvegarde
+    if (draggingPathPoint) {
+        const path = currentPaths.find(p => p.id === draggingPathPoint.pathId);
+        const pathId = draggingPathPoint.pathId;
+        draggingPathPoint = null;
+
+        if (path) {
+            try {
+                await fetchJSON(`/api/paths/${pathId}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        map_id: currentMap.id,
+                        layer_id: path.layer_id || (layerSelect.value || null),
+                        name: path.name || '',
+                        points: path.path
+                    })
+                });
+                await loadPaths();
+            } catch (err) {
+                console.error('Erreur sauvegarde path', err);
+            }
+        }
+    }
+
     // Fin drag point de shape -> sauvegarde
     if (draggingShapePoint) {
         const shape = currentShapes.find(s => s.id === draggingShapePoint.shapeId);
@@ -821,7 +980,8 @@ window.addEventListener('mouseup', async(e) => {
                         map_id: currentMap.id,
                         layer_id: shape.layer_id || (layerSelect.value || null),
                         name: shape.name || '',
-                        points: shape.shape // le backend reçoit "points"
+                        points: shape.shape,
+                        meta: shape.meta || null
                     })
                 });
                 await loadShapes();
@@ -843,9 +1003,202 @@ mapSelect.addEventListener('change', onMapChange);
 layerSelect.addEventListener('change', async() => {
     await loadAnnotations();
     await loadShapes();
+    await loadPaths();
 });
 
 typeFilter.addEventListener('change', loadAnnotations);
+
+// --- PATHS ---
+async function loadPaths() {
+    if (!currentMap) return;
+    const params = new URLSearchParams();
+    if (layerSelect.value) params.set('layer_id', layerSelect.value);
+
+    const paths = await fetchJSON(`/api/maps/${currentMap.id}/paths?` + params.toString());
+
+    currentPaths = paths.map(p => ({
+        ...p,
+        path: p.path || p.points || []
+    }));
+
+    if (!currentPaths.some(p => p.id === selectedPathId)) {
+        selectedPathId = null;
+    }
+
+    drawMapCanvas();
+    renderPathsList();
+}
+
+function renderPathsList() {
+    pathsList.innerHTML = '';
+    currentPaths.forEach(p => {
+        const li = document.createElement('li');
+        const name = p.name || '(Chemin sans nom)';
+
+        const span = document.createElement('span');
+        span.textContent = name;
+        li.appendChild(span);
+
+        if (p.id === selectedPathId) {
+            li.style.background = '#333';
+        }
+
+        span.addEventListener('click', () => {
+            selectedPathId = p.id;
+            drawMapCanvas();
+            renderPathsList();
+        });
+
+        const btn = document.createElement('button');
+        btn.textContent = 'Suppr';
+        btn.addEventListener('click', async() => {
+            if (!confirm('Supprimer ce chemin ?')) return;
+            await fetchJSON(`/api/paths/${p.id}`, { method: 'DELETE' });
+            await loadPaths();
+        });
+        li.appendChild(btn);
+        pathsList.appendChild(li);
+    });
+}
+
+startPathBtn.addEventListener('click', () => {
+    if (!currentMap) return;
+    drawingPath = true;
+    currentPathPoints = [];
+    finishPathBtn.disabled = false;
+    startPathBtn.disabled = true;
+    selectedPathId = null;
+    drawMapCanvas();
+});
+
+finishPathBtn.addEventListener('click', async() => {
+    if (!currentMap) return;
+    if (!drawingPath) return;
+    if (currentPathPoints.length < 2) {
+        alert('Il faut au moins 2 points pour un chemin.');
+        return;
+    }
+
+    const name = pathNameInput.value.trim() || '';
+    const body = {
+        map_id: currentMap.id,
+        layer_id: layerSelect.value || null,
+        name,
+        points: currentPathPoints
+    };
+
+    await fetchJSON('/api/paths', {
+        method: 'POST',
+        body: JSON.stringify(body)
+    });
+
+    drawingPath = false;
+    currentPathPoints = [];
+    pathNameInput.value = '';
+    finishPathBtn.disabled = true;
+    startPathBtn.disabled = false;
+
+    await loadPaths();
+});
+
+// Gestion du drag des points de path
+mapCanvas.addEventListener('mousedown', (e) => {
+    if (!currentMap) return;
+    if (drawingShape || drawingPath) return;
+
+    const coords = getRelativeCoordsFromEvent(e);
+    if (!coords) return;
+
+    // Vérifier si on clique sur un handle de path
+    if (selectedPathId) {
+        const path = currentPaths.find(p => p.id === selectedPathId);
+        if (path && path.path) {
+            const cw = mapCanvas.width;
+            const ch = mapCanvas.height;
+            const pxX = coords.x * cw;
+            const pxY = coords.y * ch;
+            const handleRadius = 8;
+
+            for (let i = 0; i < path.path.length; i++) {
+                const p = path.path[i];
+                const hx = p.x * cw;
+                const hy = p.y * ch;
+                const dx = pxX - hx;
+                const dy = pxY - hy;
+                if (dx * dx + dy * dy <= handleRadius * handleRadius) {
+                    draggingPathPoint = { pathId: path.id, pointIndex: i };
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return;
+                }
+            }
+        }
+    }
+
+    // Vérifier si on clique sur un handle de shape (code existant)
+    const handle = getHandleAtCoords(coords);
+    if (handle) {
+        draggingShapePoint = {
+            shapeId: handle.shape.id,
+            pointIndex: handle.pointIndex
+        };
+        e.preventDefault();
+        e.stopPropagation();
+    }
+});
+
+// --- IMPORT/EXPORT ---
+exportBtn.addEventListener('click', async() => {
+    try {
+        const data = await fetchJSON('/api/export');
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `worldnotes-export-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        alert('Export réussi !');
+    } catch (err) {
+        console.error('Erreur export:', err);
+        alert('Erreur lors de l\'export');
+    }
+});
+
+importBtn.addEventListener('click', () => {
+    importFileInput.click();
+});
+
+importFileInput.addEventListener('change', async(e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+
+        if (!confirm(`Importer ${data.maps?.length || 0} cartes, ${data.annotations?.length || 0} annotations, ${data.shapes?.length || 0} zones, ${data.paths?.length || 0} chemins ?`)) {
+            return;
+        }
+
+        const result = await fetchJSON('/api/import', {
+            method: 'POST',
+            body: JSON.stringify(data)
+        });
+
+        alert(`Import réussi !\n${result.imported.maps} cartes, ${result.imported.layers} layers, ${result.imported.annotations} annotations, ${result.imported.shapes} zones, ${result.imported.paths} chemins, ${result.imported.media} médias`);
+        
+        // Recharger les données
+        await loadMaps();
+    } catch (err) {
+        console.error('Erreur import:', err);
+        alert('Erreur lors de l\'import : ' + err.message);
+    }
+
+    importFileInput.value = '';
+});
 
 // --- INIT ---
 resizeCanvas();

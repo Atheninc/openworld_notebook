@@ -257,3 +257,32 @@ button#delete-annot-btn:hover {
     padding: 2px 6px;
     font-size: 11px;
 }
+
+/* Paths list */
+#paths-list {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+    font-size: 13px;
+}
+
+#paths-list li {
+    padding: 4px 6px;
+    border-bottom: 1px solid #333;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#paths-list button {
+    padding: 2px 6px;
+    font-size: 11px;
+}
+
+.path-tools {
+    margin-bottom: 8px;
+}
+
+.path-tools label {
+    margin-bottom: 4px;
+}

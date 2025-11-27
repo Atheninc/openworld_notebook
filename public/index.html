@@ -68,6 +68,15 @@
           ⬇️ Clique milieu : drag pour déplacer la carte
         </p>
       </div>
+
+      <div class="block">
+        <h2>Import/Export</h2>
+        <div class="buttons">
+          <button type="button" id="export-btn">📥 Exporter</button>
+          <button type="button" id="import-btn">📤 Importer</button>
+        </div>
+        <input type="file" id="import-file-input" accept=".json" hidden />
+      </div>
     </section>
 
     <section class="content">
@@ -136,6 +145,14 @@
             Nom de la zone :
             <input id="shape-name" placeholder="Biome, région, donjon..." />
           </label>
+          <label>
+            Style :
+            <select id="shape-style">
+              <option value="filled">Plein</option>
+              <option value="dashed">Pointillé</option>
+              <option value="hatched">Hachuré</option>
+            </select>
+          </label>
           <button type="button" id="start-shape-btn">✏️ Dessiner une zone</button>
           <button type="button" id="finish-shape-btn" disabled>✅ Terminer la zone</button>
           <p class="hint">
@@ -144,6 +161,21 @@
           </p>
         </div>
         <ul id="shapes-list"></ul>
+
+        <h3>Chemins (paths) du layer</h3>
+        <div class="path-tools">
+          <label>
+            Nom du chemin :
+            <input id="path-name" placeholder="Route, sentier, rivière..." />
+          </label>
+          <button type="button" id="start-path-btn">🛤️ Dessiner un chemin</button>
+          <button type="button" id="finish-path-btn" disabled>✅ Terminer le chemin</button>
+          <p class="hint">
+            Clique sur la carte pour poser les points du chemin.<br />
+            Il faut au moins 2 points, puis termine pour enregistrer.
+          </p>
+        </div>
+        <ul id="paths-list"></ul>
       </aside>
     </section>
   </main>
