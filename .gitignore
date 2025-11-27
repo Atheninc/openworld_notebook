@@ -1,0 +1,29 @@
+# Node dependencies
+node_modules/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS-specific
+.DS_Store
+Thumbs.db
+
+# Build / cache
+dist/
+build/
+.cache/
+
+# SQLite database
+worldnotes.db
+
+# Optional: ignore lock file si tu préfères
+# package-lock.json

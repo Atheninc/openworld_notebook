@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>World Notes – Map Annotator</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <h1>World Notes – Open World Annotator</h1>
+  </header>
+
+  <main>
+    <section class="controls">
+      <div class="block">
+        <h2>Carte</h2>
+        <label>
+          Map :
+          <select id="map-select"></select>
+        </label>
+
+        <div class="inline-form">
+          <input id="new-map-name" placeholder="Nom de la map" />
+          <input id="new-map-image" placeholder="Chemin image (ex: /maps/exemple-map.png)" />
+          <button id="create-map-btn">+ Ajouter map (manuel)</button>
+        </div>
+
+        <div id="drop-zone">
+          Glisse une image de map ici<br />
+          ou clique pour sélectionner
+          <input type="file" id="map-file-input" accept="image/*" hidden />
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>Layers</h2>
+        <label>
+          Layer :
+          <select id="layer-select">
+            <option value="">(Tous)</option>
+          </select>
+        </label>
+        <div class="inline-form">
+          <input id="new-layer-name" placeholder="Nom du layer" />
+          <button id="create-layer-btn">+ Ajouter layer</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h2>Filtres</h2>
+        <label>
+          Type :
+          <select id="type-filter">
+            <option value="">(Tous)</option>
+            <option value="character">Personnage</option>
+            <option value="place">Lieu</option>
+            <option value="event">Évènement</option>
+            <option value="easter_egg">Easter Egg</option>
+            <option value="architecture">Architecture</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="block">
+        <h2>Navigation</h2>
+        <p class="hint">
+          🖱 Molette : zoom / dézoom<br />
+          ⬇️ Clique milieu : drag pour déplacer la carte
+        </p>
+      </div>
+    </section>
+
+    <section class="content">
+      <div class="map-container">
+        <div id="map-wrapper">
+          <div id="map-inner">
+            <canvas id="map-canvas"></canvas>
+            <div id="markers-layer"></div>
+          </div>
+        </div>
+        <p class="hint">
+          Clic gauche sur la carte :<br />
+          • mode normal → préparer une nouvelle annotation<br />
+          • mode dessin → ajouter un point de zone (shape)
+        </p>
+      </div>
+
+      <aside class="sidebar">
+        <h2>Détails de l’annotation</h2>
+        <form id="annotation-form">
+          <input type="hidden" id="annot-id" />
+
+          <label>
+            Titre :
+            <input id="annot-title" required />
+          </label>
+
+          <label>
+            Type :
+            <select id="annot-type" required>
+              <option value="character">Personnage</option>
+              <option value="place">Lieu</option>
+              <option value="event">Évènement</option>
+              <option value="easter_egg">Easter Egg</option>
+              <option value="architecture">Architecture</option>
+            </select>
+          </label>
+
+          <label>
+            Description / notes :
+            <textarea id="annot-description" rows="4"></textarea>
+          </label>
+
+          <label>
+            Tags (séparés par des virgules) :
+            <input id="annot-tags" placeholder="village, boss, quête principale" />
+          </label>
+
+          <label>
+            Références (une URL par ligne) :
+            <textarea id="annot-refs" rows="4" placeholder="https://youtu.be/...\nhttps://artstation.com/..."></textarea>
+          </label>
+
+          <div class="buttons">
+            <button type="submit">💾 Enregistrer</button>
+            <button type="button" id="delete-annot-btn">🗑 Supprimer</button>
+          </div>
+        </form>
+
+        <h3>Liste des annotations</h3>
+        <ul id="annotations-list"></ul>
+
+        <h3>Zones (shapes) du layer</h3>
+        <div class="shape-tools">
+          <label>
+            Nom de la zone :
+            <input id="shape-name" placeholder="Biome, région, donjon..." />
+          </label>
+          <button type="button" id="start-shape-btn">✏️ Dessiner une zone</button>
+          <button type="button" id="finish-shape-btn" disabled>✅ Terminer la zone</button>
+          <p class="hint">
+            Clique sur la carte pour poser les points du polygone.<br />
+            Il faut au moins 3 points, puis termine pour enregistrer.
+          </p>
+        </div>
+        <ul id="shapes-list"></ul>
+      </aside>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
